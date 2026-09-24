@@ -1,4 +1,4 @@
-# 🎙 WhisperScribe
+﻿# ðŸŽ™ WhisperScribe
 
 **Private, on-device transcription for Windows.** Drop in a recording and get back a transcript (plus an optional AI summary). All processing happens on your machine, and nothing is uploaded.
 
@@ -23,7 +23,7 @@ Supported inputs: MP3, M4A, WAV, FLAC, OGG, AAC, WMA, OPUS, WEBM, MP4, MKV, MOV,
 Requires **Python 3.10+** on Windows (it should also run on macOS/Linux, apart from the GPU DLL helper).
 
 ```bash
-git clone https://github.com/<your-username>/WhisperScribe.git
+git clone https://github.com/rohitk9/WhisperScribe.git
 cd WhisperScribe
 python -m venv .venv
 .venv\Scripts\activate
@@ -53,7 +53,7 @@ python local_transcriber_app.py
 1. Drop a recording onto the window.
 2. Pick the language, model and output format in the sidebar.
 3. *(Optional)* choose an AI instruction chip or write your own.
-4. Press **Transcribe**. The result is saved next to the audio file by default; click **Change…** to save it somewhere else.
+4. Press **Transcribe**. The result is saved next to the audio file by default; click **Changeâ€¦** to save it somewhere else.
 
 | Shortcut | Action |
 | --- | --- |
