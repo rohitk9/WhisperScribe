@@ -76,6 +76,7 @@ pip install -r requirements-dev.txt
 python -m pytest -q tests                  # fast unit tests, no GPU or models needed (also run in CI)
 python benchmarks/bench_whisper.py --help  # re-run the model comparisons on your hardware
 python packaging/build.py v2.0.0           # build dist/WhisperScribe/ and split release archives (needs 7-Zip)
+dist\WhisperScribe\WhisperScribe.exe --selftest some.wav   # headless check of a build; result in logs/
 ```
 
 ```
