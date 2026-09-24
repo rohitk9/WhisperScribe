@@ -876,7 +876,31 @@ class TranscriberApp(ctk.CTk):
         self.destroy()
 
 
+def selftest(audio_path, speakers="Auto", prompt="List the action items."):
+    """Headless end-to-end check, mainly for frozen builds: `WhisperScribe.exe --selftest file.wav`.
+    Writes the result next to the audio and a PASS/FAIL line to the log; exit code 0 on success."""
+    ev = threading.Event()
+    eng = engine.Engine()
+    try:
+        t = time.time()
+        res = eng.transcribe(audio_path, engine.DEFAULT_MODEL, "Auto", "Auto-detect", ev, log.info, lambda *a: None,
+                             word_timestamps=speakers != "Off")
+        if speakers != "Off":
+            eng.label_speakers(audio_path, res, speakers, ev, log.info)
+        if prompt:
+            res.summary = eng.summarize(res.speaker_text, prompt, ev, log.info)
+        out = engine.save_output(res, output_path_for(audio_path, "Plain text (.txt)"), "Plain text (.txt)", prompt)
+        log.info("SELFTEST PASS in %.1fs: device=%s speakers=%d segments=%d summary_chars=%d -> %s", time.time() - t,
+                 res.device, res.num_speakers, len(res.segments), len(res.summary), out)
+        return 0
+    except Exception:
+        log.exception("SELFTEST FAIL")
+        return 1
+
+
 def main():
+    if len(sys.argv) >= 3 and sys.argv[1] == "--selftest":
+        sys.exit(selftest(sys.argv[2]))
     log.info("App started.")
     app = TranscriberApp()
     app.mainloop()
