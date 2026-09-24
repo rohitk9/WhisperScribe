@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Build artifacts (PyInstaller)
+build/
+dist/
+*.spec
+
+# Logs and personal output — never commit transcripts
+logs/
+*.log
+transcription.txt
+*.srt
+
+# Local one-off scripts with machine-specific paths
+transcribe.py
+convert_icon.py
+
+# Editors / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
