@@ -1,0 +1,28 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  unit-tests:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+        python: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      # engine.py imports its heavy dependencies (faster-whisper, torch, transformers) lazily,
+      # so the unit tests only need the light-weight packages below.
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest -q tests
+      - name: Byte-compile everything (catches syntax errors in the UI and benchmark scripts)
+        run: python -m compileall -q local_transcriber_app.py engine.py benchmarks tests

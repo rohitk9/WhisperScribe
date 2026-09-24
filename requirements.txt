@@ -3,13 +3,16 @@ customtkinter>=5.2
 tkinterdnd2>=0.4          # drag & drop (optional — the app still works without it)
 
 # Transcription
-faster-whisper>=1.0
+faster-whisper>=1.2
 
-# Optional AI summaries (local LLM)
-transformers>=4.45
+# Speaker labels + AI instructions (local models)
+numpy
+scikit-learn>=1.3
+transformers>=4.51
 accelerate>=0.30
-torch                     # for GPU summaries install the CUDA build: see README
+bitsandbytes>=0.45        # 4-bit loading for the default Qwen2.5 7B summary model (NVIDIA GPU)
+torch                     # install the CUDA build first — see README
 
-# Optional GPU transcription on Windows (CUDA 12 runtime libraries for faster-whisper)
+# GPU transcription on Windows (CUDA 12 runtime libraries for faster-whisper)
 nvidia-cublas-cu12
 nvidia-cudnn-cu12

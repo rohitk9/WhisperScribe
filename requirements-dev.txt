@@ -1,0 +1,4 @@
+# Unit tests (CI) — the full app dependencies are in requirements.txt
+pytest>=8
+numpy
+scikit-learn>=1.3

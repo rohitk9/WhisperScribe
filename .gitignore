@@ -7,7 +7,7 @@ venv/
 # Build artifacts (PyInstaller)
 build/
 dist/
-*.spec
+release/
 
 # Logs and personal output — never commit transcripts
 logs/
