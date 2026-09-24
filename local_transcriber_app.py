@@ -948,15 +948,24 @@ def selftest(audio_path, speakers="Auto", prompt="List the action items."):
     eng = engine.Engine()
     try:
         t = time.time()
+        # Same summary model the app would pick: the Ollama chat model when available, else the built-in 7B.
+        ollama = integrations.OllamaClient()
+        summary_model = engine.DEFAULT_SUMMARY_MODEL
+        if ollama.available() and integrations.RECOMMENDED_CHAT_MODEL in ollama.models():
+            summary_model = engine.OLLAMA_PREFIX + integrations.RECOMMENDED_CHAT_MODEL
         res = eng.transcribe(audio_path, engine.DEFAULT_MODEL, "Auto", "Auto-detect", ev, log.info, lambda *a: None,
                              word_timestamps=speakers != "Off")
         if speakers != "Off":
             eng.label_speakers(audio_path, res, speakers, ev, log.info)
         if prompt:
-            res.summary = eng.summarize(res.speaker_text, prompt, ev, log.info)
+            res.summary = eng.summarize(res.speaker_text, prompt, ev, log.info, summary_model)
         out = engine.save_output(res, output_path_for(audio_path, "Plain text (.txt)"), "Plain text (.txt)", prompt)
-        log.info("SELFTEST PASS in %.1fs: device=%s speakers=%d segments=%d summary_chars=%d -> %s", time.time() - t,
-                 res.device, res.num_speakers, len(res.segments), len(res.summary), out)
+        key = integrations.load_api_key()
+        anythingllm = "no key" if not key else \
+            ("connected" if integrations.AnythingLLMClient(key).check() else "key rejected")
+        log.info("SELFTEST PASS in %.1fs: device=%s speakers=%d segments=%d summary=%s (%d chars) anythingllm=%s -> %s",
+                 time.time() - t, res.device, res.num_speakers, len(res.segments), summary_model, len(res.summary),
+                 anythingllm, out)
         return 0
     except Exception:
         log.exception("SELFTEST FAIL")
