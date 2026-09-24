@@ -10,7 +10,7 @@ import site
 import sys
 import threading
 from dataclasses import dataclass, field
-from typing import Callable, Optional
+from typing import Callable
 
 log = logging.getLogger("whisperscribe.engine")
 
@@ -56,6 +56,27 @@ SUMMARY_MODELS = {
 }
 DEFAULT_SUMMARY_MODEL = "Qwen2.5 7B · best"
 CPU_SUMMARY_FALLBACK = "Qwen3 1.7B · fast"  # 4-bit models can't run without CUDA
+
+# Models served by a local Ollama install appear in the menu as "Ollama · <model>". Using the same model
+# AnythingLLM chats with means only one LLM sits in VRAM.
+OLLAMA_PREFIX = "Ollama · "
+# Ollama reloads a model (~40 s) whenever the requested context size changes, so summaries use the same size
+# as AnythingLLM's chats (its "Ollama token limit", 16K by default; the app reads the real value when connected).
+OLLAMA_NUM_CTX = 16384
+
+
+def ollama_model_from_name(name: str) -> str:
+    return name[len(OLLAMA_PREFIX):] if name and name.startswith(OLLAMA_PREFIX) else ""
+
+
+SUMMARY_SYSTEM = ("You are a precise assistant running locally. Follow the user's instruction using only facts "
+                  "stated in the transcript. Never invent names, numbers or dates. Answer in the transcript's "
+                  "language.")
+
+
+def summary_messages(instruction: str, text: str) -> list:
+    return [{"role": "system", "content": SUMMARY_SYSTEM},
+            {"role": "user", "content": f"Instruction: {instruction}\n\nTranscript:\n{text}"}]
 
 
 def split_chunks(text: str, size: int) -> list:
@@ -279,6 +300,7 @@ class Engine:
         self._summarizer = None
         self._summarizer_key = None
         self._speaker_model = None
+        self.ollama_num_ctx = OLLAMA_NUM_CTX
         self._lock = threading.Lock()
 
     # ---------- Whisper ----------
@@ -393,12 +415,7 @@ class Engine:
         import torch
 
         tokenizer, model, spec = summarizer
-        messages = [
-            {"role": "system", "content": "You are a precise assistant running locally. Follow the user's "
-                                          "instruction using only facts stated in the transcript. Never invent "
-                                          "names, numbers or dates. Answer in the transcript's language."},
-            {"role": "user", "content": f"Instruction: {instruction}\n\nTranscript:\n{text}"},
-        ]
+        messages = summary_messages(instruction, text)
         input_ids = tokenizer.apply_chat_template(
             messages, add_generation_prompt=True, return_tensors="pt", return_dict=True,
             enable_thinking=False,  # Qwen3: skip the hidden "thinking" phase; ignored by other templates
@@ -414,31 +431,57 @@ class Engine:
         model_name = model_name or DEFAULT_SUMMARY_MODEL
         self.unload_whisper()  # give the LLM the whole GPU; Whisper reloads in ~2 s when needed again
         on_status(f"Loading {model_name}…")
-        summarizer = self._load_summarizer(model_name)
-        chunk_chars = summarizer[2].get("chunk_chars", 24000)
+        ollama_model = ollama_model_from_name(model_name)
+        if ollama_model:
+            self.unload_summarizer()  # don't hold a second LLM in VRAM next to Ollama's
+            from integrations import OllamaClient
+            client = OllamaClient()
+            num_ctx = min(self.ollama_num_ctx, client.context_length(ollama_model) or self.ollama_num_ctx)
+            chunk_chars = int(num_ctx * 2.5)  # ~4 chars/token, leaving room for the prompt and the answer
+
+            def ask(instruction, chunk, max_new_tokens=900):
+                r = client.chat(ollama_model, summary_messages(instruction, chunk), num_ctx=num_ctx,
+                                max_tokens=max_new_tokens)
+                return r["message"]["content"].strip()
+        else:
+            summarizer = self._load_summarizer(model_name)
+            chunk_chars = summarizer[2].get("chunk_chars", 24000)
+
+            def ask(instruction, chunk, max_new_tokens=900):
+                return self._ask(summarizer, instruction, chunk, max_new_tokens)
 
         chunks = split_chunks(text, chunk_chars)
         if len(chunks) == 1:
             on_status("Generating summary…")
-            return self._ask(summarizer, prompt, chunks[0])
+            return ask(prompt, chunks[0])
 
         partials = []
         for i, chunk in enumerate(chunks, 1):
             if cancel.is_set():
                 raise Cancelled()
             on_status(f"Summarizing part {i} of {len(chunks)}…")
-            partials.append(self._ask(summarizer, prompt, chunk, max_new_tokens=600))
+            partials.append(ask(prompt, chunk, max_new_tokens=600))
 
         if cancel.is_set():
             raise Cancelled()
         on_status("Combining partial summaries…")
         combined = "\n\n".join(f"Part {i}:\n{p}" for i, p in enumerate(partials, 1))
-        return self._ask(
-            summarizer,
+        return ask(
             f"These are notes from consecutive parts of one recording. Merge them into a single answer "
             f"to this instruction, removing duplicates: {prompt}",
             combined[:chunk_chars],
         )
+
+    def unload_summarizer(self):
+        """Free VRAM held by the transformers summarizer (e.g. before Ollama/AnythingLLM needs the GPU)."""
+        if self._summarizer is not None:
+            self._summarizer, self._summarizer_key = None, None
+            gc.collect()
+            try:
+                import torch
+                torch.cuda.empty_cache()
+            except Exception:
+                pass
 
     def label_speakers(self, path: str, result: "Result", speakers: str, cancel: threading.Event,
                        on_status: Callable[[str], None]):

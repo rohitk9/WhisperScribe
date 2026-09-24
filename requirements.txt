@@ -5,6 +5,9 @@ tkinterdnd2>=0.4          # drag & drop (optional — the app still works withou
 # Transcription
 faster-whisper>=1.2
 
+# AnythingLLM chat integration: stores the API key in Windows Credential Manager
+keyring>=24
+
 # Speaker labels + AI instructions (local models)
 numpy
 scikit-learn>=1.3

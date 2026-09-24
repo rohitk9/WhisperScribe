@@ -15,11 +15,32 @@ AI summaries. All processing happens on your machine, and nothing is uploaded.
 - **Speaker labels:** "Speaker 1 / Speaker 2", with the number of speakers detected automatically or set by you
 - **AI instructions** run by a local LLM (default: Qwen2.5 7B in 4-bit). One-click presets for summary, action items,
   key points and meeting notes, or write your own. Long recordings are summarized in parts, not truncated.
+- **Chat with your recordings** through [AnythingLLM](https://anythingllm.com/) running locally: ask about one
+  recording or across all of them, with sources ([setup](#chat-with-your-recordings-anythingllm))
 - **Live transcript** with progress and time remaining; automatic CPU fallback if the GPU isn't usable
 - English, Hindi, Hinglish (code-switched) or auto-detect · plain text, timestamped text or `.srt` subtitles
 - Light/Dark/System themes, saved settings and keyboard shortcuts
 
 ![Speaker-labelled transcript](docs/screenshot-speakers.png)
+
+## Chat with your recordings (AnythingLLM)
+
+![Chat tab](docs/screenshot-chat.png)
+
+WhisperScribe can send every transcript, with its summary and speaker labels, to
+[AnythingLLM Desktop](https://anythingllm.com/) on the same machine. Nothing leaves your computer. Transcripts go
+into a **Meeting Transcripts** workspace with one thread per recording, so you can chat in WhisperScribe's
+**Chat** tab or carry on the same conversation inside AnythingLLM.
+
+1. In AnythingLLM, open **Settings → Developer API → Generate New API Key**.
+2. In WhisperScribe, open the **Chat** tab, click **⚙**, paste the key, then **Test** and **Save**. The key is
+   stored in Windows Credential Manager.
+3. Keep **Send to AnythingLLM** switched on in the sidebar and transcribe as usual.
+4. Ask questions. Pick one recording in **Ask about**, or **All meetings** to search across everything.
+
+If Ollama (AnythingLLM's built-in engine, or standalone Ollama) has `qwen3.5:9b` installed, WhisperScribe creates
+a no-thinking variant, `qwen3.5-nothink:9b`, and uses it for the transcripts workspace and for summaries. Your other
+AnythingLLM workspaces keep their own model. To install the model: `ollama pull qwen3.5:9b`.
 
 ## Why these models?
 
@@ -30,6 +51,7 @@ I benchmarked 9 speech models and 7 local LLMs on an RTX 5080 / Ryzen 7 9800X3D.
 | --- | --- | --- |
 | Speech | Base: 78 % confidence, 2.2 % WER | **Large v3 Turbo: 87 % confidence, 0.3 % WER, same speed** |
 | Summary | Qwen2.5 0.5B: found 50 % of key facts | **Qwen2.5 7B (4-bit): found 100 %, about 6 s** |
+| Chat (via Ollama) | phi4: 5/10 on long meetings, invented facts | **qwen3.5 9B: 10/10, answers in about 5 s** |
 
 ## Download (Windows, NVIDIA GPU)
 
@@ -82,6 +104,9 @@ dist\WhisperScribe\WhisperScribe.exe --selftest some.wav   # headless check of a
 ```
 local_transcriber_app.py   # CustomTkinter UI: drag & drop, batch queue, settings, live progress
 engine.py                  # transcription, speaker labels, summarization, output formats (no UI code)
+integrations.py            # Ollama + AnythingLLM HTTP clients (standard library only)
+chat_panel.py              # Chat tab and AnythingLLM connection dialog
+ui_theme.py                # shared colours
 tests/                     # pytest unit tests for engine.py
 benchmarks/                # speech-model and LLM comparison scripts
 packaging/                 # PyInstaller spec and release build script
@@ -99,6 +124,8 @@ Logs are written to `logs/whisperscribe.log` (rotated automatically). Settings a
 | Drag & drop doesn't work | `pip install tkinterdnd2` (clicking to browse always works) |
 | Summary is slow or runs out of memory | Pick **Qwen3 1.7B · fast** next to *AI instructions* |
 | Speaker count is wrong | Set *Speaker labels* to the exact number instead of *Auto* |
+| Chat says "Not connected" or HTTP 403 | Check that AnythingLLM is running, then re-enter the API key under **Chat → ⚙** |
+| First chat answer takes ~40 s | Ollama is loading the model into VRAM; later answers take a few seconds |
 
 ## License
 

@@ -1,0 +1,29 @@
+{
+  "_about": "Questions about meeting_transcript.txt (a synthetic two-person meeting). An answer passes if it contains at least one keyword from EVERY group in 'expect' (case-insensitive) and none from 'forbid'. 'unanswerable' questions pass only if the model says the transcript doesn't cover it.",
+  "facts": [
+    ["marcus"], ["tooltip"], ["friday"], ["39", "thirty nine", "thirty-nine"], ["wednesday"], ["priya"], ["cach"],
+    ["october 15", "october fifteenth", "oct 15", "15th", "fifteenth"], ["blocker"],
+    ["follow-up", "follow up", "later release", "subsequent release", "future release"]
+  ],
+  "questions": [
+    {"q": "Who owns the tooltip tour, and when is the draft due?", "expect": [["marcus"], ["friday"]]},
+    {"q": "What price are they going to propose for the professional tier, and what did finance originally want?",
+     "expect": [["39", "thirty nine", "thirty-nine"], ["49", "forty nine", "forty-nine"]]},
+    {"q": "Why is the new onboarding not shipping at launch?", "expect": [["design"], ["two weeks", "two more weeks", "2 weeks", "2 more weeks"]]},
+    {"q": "Who is going to confirm the caching fix timeline, and with whom?",
+     "expect": [["sarah", "speaker 2"], ["priya"]], "forbid": ["marcus will confirm"]},
+    {"q": "How many beta responses were there and what was the main complaint?",
+     "expect": [["120", "hundred and twenty", "hundred twenty"], ["slow", "loading"]]},
+    {"q": "Is the launch date changing?", "expect": [["october 15", "october fifteenth", "15th", "fifteenth"]],
+     "forbid": ["launch is delayed", "launch will be delayed", "pushed the launch"]},
+    {"q": "How much will the caching fix improve load times?", "expect": [["half", "50%", "50 percent"]]},
+    {"q": "Who is Speaker 1 talking to at the start of the meeting?", "expect": [["sarah"]]},
+    {"q": "What marketing budget was approved in this meeting?", "unanswerable": true},
+    {"q": "Which competitor did they compare the dashboard against?", "unanswerable": true}
+  ],
+  "refusal_markers": ["not mention", "no mention", "not discussed", "doesn't mention", "does not mention",
+                      "not specified", "no information", "not stated", "isn't mentioned", "is not mentioned",
+                      "wasn't discussed", "was not discussed", "not covered", "doesn't say", "does not say",
+                      "no competitor", "no marketing budget", "not provided", "not included", "no details",
+                      "there is no", "there was no", "didn't discuss", "did not discuss", "not addressed"]
+}

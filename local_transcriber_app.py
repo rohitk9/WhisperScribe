@@ -49,20 +49,10 @@ logging.getLogger("httpx").setLevel(logging.WARNING)  # HuggingFace download cha
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 engine.register_cuda_dlls()
 
-# --- Palette: (light, dark) ---
-BG = ("#F4F5F7", "#101216")
-SIDEBAR = ("#FFFFFF", "#16191F")
-CARD = ("#FFFFFF", "#1B1F26")
-FIELD = ("#F7F8FA", "#14171C")
-BORDER = ("#E2E5EA", "#2A2F38")
-TEXT = ("#111827", "#E5E7EB")
-MUTED = ("#6B7280", "#8B93A1")
-ACCENT = "#10B981"
-ACCENT_HOVER = "#0E9F6E"
-ACCENT_SOFT = ("#E7F8F1", "#12302A")
-DANGER = "#EF4444"
-DANGER_HOVER = "#DC2626"
-SPEAKER_COLORS = ["#60A5FA", "#F472B6", "#FBBF24", "#A78BFA", "#34D399", "#F87171"]
+from ui_theme import (ACCENT, ACCENT_HOVER, ACCENT_SOFT, BG, BORDER, CARD, DANGER, DANGER_HOVER, FIELD,  # noqa: E402
+                      MUTED, SIDEBAR, SPEAKER_COLORS, TEXT)
+import chat_panel  # noqa: E402
+import integrations  # noqa: E402
 
 PROMPT_PRESETS = {
     "Summary": "Summarize this recording in a short paragraph, followed by 3-5 key takeaways as bullet points.",
@@ -79,6 +69,10 @@ DEFAULT_SETTINGS = {
     "speakers": "Off",
     "format": "Plain text (.txt)",
     "summary_model": engine.DEFAULT_SUMMARY_MODEL,
+    "summary_model_auto": True,  # until the user picks one, prefer the Ollama model AnythingLLM chats with
+    "anythingllm_sync": True,
+    "anythingllm_url": integrations.ANYTHINGLLM_URL,
+    "anythingllm_workspace": integrations.DEFAULT_WORKSPACE,
     "open_when_done": True,
     "appearance": "Dark",
     "last_dir": "",
@@ -163,6 +157,7 @@ class TranscriberApp(ctk.CTk):
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.after(50, self._drain_queue)
         threading.Thread(target=self._detect_gpu, daemon=True).start()
+        threading.Thread(target=self._detect_ollama, daemon=True).start()
 
     # ------------------------------------------------------------------ layout
     def _build_sidebar(self):
@@ -185,6 +180,9 @@ class TranscriberApp(ctk.CTk):
         self.open_var = tk.BooleanVar(value=self.settings["open_when_done"])
         ctk.CTkSwitch(sb, text="Open file when finished", variable=self.open_var, font=self.f_body,
                       progress_color=ACCENT, command=self._save_settings).pack(anchor="w", padx=24, pady=(4, 0))
+        self.sync_var = tk.BooleanVar(value=self.settings["anythingllm_sync"])
+        ctk.CTkSwitch(sb, text="Send to AnythingLLM", variable=self.sync_var, font=self.f_body,
+                      progress_color=ACCENT, command=self._save_settings).pack(anchor="w", padx=24, pady=(8, 0))
 
         bottom = ctk.CTkFrame(sb, fg_color="transparent")
         bottom.pack(side="bottom", fill="x", padx=24, pady=22)
@@ -298,10 +296,12 @@ class TranscriberApp(ctk.CTk):
         head.pack(fill="x", padx=16, pady=(12, 0))
         ctk.CTkLabel(head, text="AI instructions", font=self.f_h2, text_color=TEXT, height=20).pack(side="left")
         value = self.settings.get("summary_model")
-        self.summary_model_var = tk.StringVar(
-            value=value if value in engine.SUMMARY_MODELS else engine.DEFAULT_SUMMARY_MODEL)
-        self._option_menu(head, list(engine.SUMMARY_MODELS), self.summary_model_var,
-                          lambda _: self._save_settings(), width=170, height=26).pack(side="right")
+        valid = value in engine.SUMMARY_MODELS or engine.ollama_model_from_name(value)
+        self.summary_model_var = tk.StringVar(value=value if valid else engine.DEFAULT_SUMMARY_MODEL)
+        self.summary_menu = self._option_menu(head, list(engine.SUMMARY_MODELS), self.summary_model_var,
+                                              self._on_summary_model_picked, width=190, height=26,
+                                              dynamic_resizing=False)
+        self.summary_menu.pack(side="right")
         ctk.CTkLabel(card, text="Optional · a local LLM runs your instruction on the transcript", font=self.f_small,
                      text_color=MUTED, height=18).pack(anchor="w", padx=16)
 
@@ -357,6 +357,7 @@ class TranscriberApp(ctk.CTk):
                                                "The transcript will stream in here as it's recognised.")
         self.summary_box = self._result_box(self.tabs.add("Summary"),
                                             "Add AI instructions to get a summary, action items, or notes.")
+        self.chat = chat_panel.ChatPanel(self, self.tabs.add("Chat"))
 
         bar = ctk.CTkFrame(card, fg_color="transparent")
         bar.grid(row=1, column=0, sticky="ew", padx=16, pady=(4, 14))
@@ -572,6 +573,7 @@ class TranscriberApp(ctk.CTk):
                 language=self.lang_var.get(), model=self.model_var.get(), device=self.device_var.get(),
                 speakers=self.speakers_var.get(), format=self.format_var.get(),
                 summary_model=self.summary_model_var.get(), open_when_done=bool(self.open_var.get()),
+                anythingllm_sync=bool(self.sync_var.get()),
                 appearance=self.appearance.get() or self.settings["appearance"])
         except AttributeError:
             pass  # called before all widgets exist
@@ -591,6 +593,44 @@ class TranscriberApp(ctk.CTk):
         except Exception:
             text, color = "● Hardware status unknown", MUTED
         self.post(self.device_label.configure, text=text, text_color=color)
+
+    def _detect_ollama(self):
+        """Offer installed Ollama models (e.g. the one AnythingLLM chats with) as summary models."""
+        client = integrations.OllamaClient()
+        try:
+            if client.available():
+                try:  # the no-thinking variant answers in <1 s instead of "reasoning" for 5-40 s first
+                    client.ensure_nothink_variant(integrations.RECOMMENDED_BASE_MODEL,
+                                                  integrations.RECOMMENDED_CHAT_MODEL)
+                except Exception:
+                    log.warning("Could not prepare %s", integrations.RECOMMENDED_CHAT_MODEL, exc_info=True)
+                models = client.models()
+            else:
+                models = []
+        except Exception:
+            models = []
+        self.ollama_models = models
+        self.post(self._set_summary_models, models)
+
+    def _set_summary_models(self, ollama_models):
+        names = [engine.OLLAMA_PREFIX + m for m in ollama_models] + list(engine.SUMMARY_MODELS)
+        self.summary_menu.configure(values=names)
+        recommended = engine.OLLAMA_PREFIX + integrations.RECOMMENDED_CHAT_MODEL
+        if self.settings.get("summary_model_auto", True) and recommended in names:
+            # Same model as the AnythingLLM transcripts workspace: one LLM in VRAM instead of two.
+            self.summary_model_var.set(recommended)
+            self._save_settings()
+        elif engine.ollama_model_from_name(self.summary_model_var.get()) and self.summary_model_var.get() not in names:
+            self.summary_model_var.set(engine.DEFAULT_SUMMARY_MODEL)  # that Ollama model is gone
+
+    def _on_summary_model_picked(self, _choice):
+        self.settings["summary_model_auto"] = False
+        self._save_settings()
+
+    def chat_model_for_workspace(self) -> str:
+        """Ollama model to pin on the transcripts workspace (empty = keep AnythingLLM's default)."""
+        return integrations.RECOMMENDED_CHAT_MODEL if integrations.RECOMMENDED_CHAT_MODEL in \
+            getattr(self, "ollama_models", []) else ""
 
     # --------------------------------------------------------- thread → UI
     def post(self, fn, *args, **kwargs):
@@ -633,6 +673,7 @@ class TranscriberApp(ctk.CTk):
         self.running = True
         self.cancel_event.clear()
         self.written_files = []
+        self.sync_errors = []
         self._set_controls_running(True)
         self._reset_box(self.transcript_box)
         self._reset_box(self.summary_box)
@@ -643,8 +684,12 @@ class TranscriberApp(ctk.CTk):
 
         opts = dict(fmt=fmt, prompt=self.prompt_box.get("1.0", "end-1c").strip(), language=self.lang_var.get(),
                     model=self.model_var.get(), device=self.device_var.get(), speakers=self.speakers_var.get(),
-                    summary_model=self.summary_model_var.get())
-        log.info("Starting %d job(s): %s", len(jobs), {k: v for k, v in opts.items() if k != "prompt"})
+                    summary_model=self.summary_model_var.get(),
+                    sync=self.chat.client if self.sync_var.get() else None,
+                    workspace=self.settings.get("anythingllm_workspace", integrations.DEFAULT_WORKSPACE),
+                    chat_model=self.chat_model_for_workspace())
+        log.info("Starting %d job(s): %s", len(jobs),
+                 {k: v for k, v in opts.items() if k not in ("prompt", "sync")} | {"sync": bool(opts["sync"])})
         threading.Thread(target=self._worker, args=(jobs, opts), daemon=True).start()
 
     def _worker(self, jobs, opts):
@@ -675,6 +720,8 @@ class TranscriberApp(ctk.CTk):
                 status("Saving…")
                 written = engine.save_output(result, output_path, opts["fmt"], opts["prompt"])
                 self.post(self._file_done, written, result)
+                if opts["sync"] and result.segments:
+                    self._sync_to_anythingllm(opts, result, input_path, status)
             except engine.Cancelled:
                 break
             except Exception as exc:
@@ -688,6 +735,19 @@ class TranscriberApp(ctk.CTk):
             self.post(self._on_cancelled)
         else:
             self.post(self._on_finished, n, failures, time.time() - started)
+
+    def _sync_to_anythingllm(self, opts, result, input_path, status):
+        """Push the transcript to AnythingLLM. A failure here never fails the transcription itself."""
+        status("Sending to AnythingLLM…")
+        title = os.path.splitext(os.path.basename(input_path))[0]
+        recorded = time.strftime("%d %b %Y", time.localtime(os.path.getmtime(input_path)))
+        try:
+            entry = integrations.sync_transcript(opts["sync"], result, title, opts["prompt"], recorded,
+                                                 opts["workspace"], opts["chat_model"])
+            self.post(self.chat.add_recording, entry)
+        except Exception as exc:
+            log.warning("AnythingLLM sync failed for %s: %s", input_path, exc)
+            self.sync_errors.append(str(exc))
 
     def _set_status(self, text):
         self.status_label.configure(text=text, text_color=TEXT)
@@ -782,6 +842,9 @@ class TranscriberApp(ctk.CTk):
             self.meta_label.configure(text=f"Saved {os.path.basename(saved[0])}  ·  " + self.meta_label.cget("text"))
         elif n > 1:
             self.meta_label.configure(text=f"Saved {len(saved)} transcript(s) next to the audio files")
+        if self.sync_errors:
+            self.meta_label.configure(text=f"Saved, but not sent to AnythingLLM: {self.sync_errors[0]}"[:110],
+                                      text_color=DANGER)
         if failures:
             details = "\n".join(f"• {os.path.basename(p)}: {e}" for p, e in failures[:6])
             messagebox.showwarning("Some files failed", f"{details}\n\nSee logs/whisperscribe.log for details.")
@@ -851,9 +914,11 @@ class TranscriberApp(ctk.CTk):
         box.configure(state="disabled")
 
     def _copy_result(self):
-        box = self.transcript_box if self.tabs.get() == "Transcript" else self.summary_box
+        tab = self.tabs.get()
+        text = self.chat.text() if tab == "Chat" else \
+            (self.transcript_box if tab == "Transcript" else self.summary_box).get("1.0", "end-1c")
         self.clipboard_clear()
-        self.clipboard_append(box.get("1.0", "end-1c"))
+        self.clipboard_append(text)
         self.meta_label.configure(text=f"{self.tabs.get()} copied to clipboard.", text_color=MUTED)
 
     def _open_output(self):

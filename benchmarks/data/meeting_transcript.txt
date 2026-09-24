@@ -1,0 +1,16 @@
+Speaker 1: Hi Sarah, thanks for joining. Let's go through the product launch plan for the new analytics dashboard.
+Speaker 2: Sure. Before we start, I want to flag that the design team still needs two more weeks to finalize the onboarding screens.
+Speaker 1: Two weeks pushes us past the October 15th deadline. Can we launch without the new onboarding and ship it in a follow-up release?
+Speaker 2: That's possible, but customer support is worried about the increase in tickets if users can't find the export feature.
+Speaker 1: Fair point. What if we add a short tooltip tour instead? Marcus said it would only take three days to build.
+Speaker 2: I like that. Let's make Marcus the owner for the tooltip tour and ask him to have a draft ready by Friday. Agreed.
+Speaker 1: Next item is pricing. Finance wants the professional tier at $49 per month.
+Speaker 2: Our survey showed most small teams were comfortable paying up to $39, so $49 feels risky.
+Speaker 1: Then let's propose $39 for the first year and revisit after we see churn numbers in the first quarter.
+Speaker 2: Good. I'll write up that recommendation and send it to Finance by Wednesday.
+Speaker 1: The last topic is the beta feedback. We had about 120 responses, and the main complaint was slow loading on large reports.
+Speaker 2: Engineering already has a caching fix. Priya estimates it will cut load times roughly in half. Great.
+Speaker 1: Can we make the caching fix a launch blocker? I don't want reviewers to see slow reports
+Speaker 2: on day one. Yes, let's mark it as a blocker. I'll confirm the timeline with Priya tomorrow morning.
+Speaker 1: Perfect. So to recap, the launch stays on October 15th, onboarding moves to a follow-up release, and we propose $39 pricing.
+Speaker 2: And the action items are Marcus on the tooltip tour, me on the pricing write-up, and Priya on the caching fix. Thanks everyone.

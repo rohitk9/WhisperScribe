@@ -65,6 +65,45 @@ the 1.5B–3.8B models. The app lists three choices: **7B · best** (default), *
 needs CUDA. Before summarising, the app frees the speech model's VRAM and summarises at most 24,000 characters per
 pass, so peak VRAM stays well under 16 GB even for long recordings.
 
+## Chat model (Ollama, used through AnythingLLM)
+
+WhisperScribe sends transcripts to AnythingLLM, which answers questions through Ollama. The same model can also write
+WhisperScribe's summaries, so only one LLM sits in VRAM. The test uses
+[`benchmarks/data/meeting_qa.json`](../benchmarks/data/meeting_qa.json): 10 questions about the reference meeting,
+two of which ask about things the meeting never mentions and should be declined. "Long" buries the same meeting
+inside about 22,000 tokens of other discussion, like a long recording or several retrieved transcripts. Every model
+ran fully on the GPU at its maximum context (capped at 32K).
+
+| Model (Ollama tag) | Context | Q&A | Q&A, long | Summary facts | Answer time | Tokens/s | VRAM |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| phi4:latest *(AnythingLLM's model before)* | 16K max | 10/10 | **5/10** | 95 % | 0.3 s | 93 | 14.4 GB |
+| **qwen3.5:9b** ✅ | 256K | **10/10** | **10/10** | 90 % | **0.3 s** | **119** | **9.9 GB** |
+| ministral-3:14b | 256K | 10/10 | 10/10 | 100 % | 1.1 s | 101 | 15.4 GB |
+| gemma4:12b | — | not tested: needs a newer Ollama than AnythingLLM 1.16.1 bundles | | | | | |
+
+**phi4 made things up on long meetings.** The meeting didn't fit in its 16K window, and instead of declining it
+answered "$59", "due Wednesday" and "100 responses", none of which appear in the meeting.
+
+**Pick: qwen3.5 9B.** It's perfect on both Q&A tests, the fastest, and at 9.9 GB it leaves room for Whisper next to
+it. ministral-3 14B writes slightly more complete summaries but fills the whole 16 GB card; it's still available in
+the summary menu.
+
+### Two fixes needed to use it through AnythingLLM
+
+- **Thinking mode.** qwen3.5 "thinks" before answering, and AnythingLLM can't turn that off (Ollama's `think: false`
+  isn't sent for chats). Answers took 8–50 s and the reasoning showed up in replies. WhisperScribe creates
+  `qwen3.5-nothink:9b` in Ollama: the same weights (no download, no extra disk) with a chat template that starts
+  every answer with an empty `<think></think>`, which is Qwen's official non-thinking mode. Answers now start in
+  under a second.
+- **Context size.** Ollama reloads a model (about 40 s) whenever the requested context size changes. WhisperScribe
+  reads AnythingLLM's Ollama token limit and uses the same value for summaries, so switching between chatting and
+  summarizing costs nothing: 1.3 s for a summary, 3.1 s for the next chat.
+
+End to end through the real AnythingLLM API (upload the transcript, embed it, then chat in a thread with the
+recommended workspace settings), the same 10 questions scored **10/10** at about 5 s per answer, each with the
+recording cited as a source. Attribution questions ("who is writing it up?") were correct 9/9 across repeated
+fresh threads. That took one prompt fix: the model has to credit "I'll do it" to the speaker label on that line.
+
 ## Speaker labels
 
 The speaker model is `microsoft/wavlm-base-plus-sv` (open, no account needed). Each transcript segment is split at
@@ -102,6 +141,7 @@ action items):
 ```bash
 python benchmarks/bench_whisper.py --real my_recording.m4a --ref-audio clip.wav --ref-text clip.txt
 python benchmarks/bench_llm.py --transcript clip.txt --facts facts.json
+python benchmarks/bench_ollama.py --models phi4:latest qwen3.5:9b ministral-3:14b   # uses benchmarks/data/
 ```
 
 `bench_whisper.py` prints only numbers for `--real`, so private recordings are safe to use. `facts.json` is a list of
