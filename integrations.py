@@ -4,6 +4,7 @@ Standard library only, so it adds no dependencies. Everything talks to localhost
 """
 import json
 import logging
+import os
 import re
 import urllib.error
 import urllib.request
@@ -118,16 +119,80 @@ class OllamaClient:
 
 
 # ---------------------------------------------------------- AnythingLLM
-def load_api_key() -> str:
+CREDENTIAL_TARGET = "WhisperScribe/anythingllm-api-key"
+
+
+# Windows Credential Manager through advapi32 directly: no extra package, so it works whichever Python
+# (or frozen .exe) starts the app. Other platforms fall back to the `keyring` package.
+def _win_cred_read(target):
+    import ctypes
+    from ctypes import wintypes
+
+    class CREDENTIAL(ctypes.Structure):
+        _fields_ = [("Flags", wintypes.DWORD), ("Type", wintypes.DWORD), ("TargetName", wintypes.LPWSTR),
+                    ("Comment", wintypes.LPWSTR), ("LastWritten", wintypes.FILETIME),
+                    ("CredentialBlobSize", wintypes.DWORD), ("CredentialBlob", ctypes.POINTER(ctypes.c_char)),
+                    ("Persist", wintypes.DWORD), ("AttributeCount", wintypes.DWORD), ("Attributes", ctypes.c_void_p),
+                    ("TargetAlias", wintypes.LPWSTR), ("UserName", wintypes.LPWSTR)]
+
+    advapi = ctypes.WinDLL("advapi32", use_last_error=True)
+    pcred = ctypes.POINTER(CREDENTIAL)()
+    if not advapi.CredReadW(target, 1, 0, ctypes.byref(pcred)):  # 1 = CRED_TYPE_GENERIC
+        return ""
     try:
+        blob = ctypes.string_at(pcred.contents.CredentialBlob, pcred.contents.CredentialBlobSize)
+        return blob.decode("utf-16-le")
+    finally:
+        advapi.CredFree(pcred)
+
+
+def _win_cred_write(target, secret):
+    import ctypes
+    from ctypes import wintypes
+
+    class CREDENTIAL(ctypes.Structure):
+        _fields_ = [("Flags", wintypes.DWORD), ("Type", wintypes.DWORD), ("TargetName", wintypes.LPWSTR),
+                    ("Comment", wintypes.LPWSTR), ("LastWritten", wintypes.FILETIME),
+                    ("CredentialBlobSize", wintypes.DWORD), ("CredentialBlob", ctypes.c_char_p),
+                    ("Persist", wintypes.DWORD), ("AttributeCount", wintypes.DWORD), ("Attributes", ctypes.c_void_p),
+                    ("TargetAlias", wintypes.LPWSTR), ("UserName", wintypes.LPWSTR)]
+
+    advapi = ctypes.WinDLL("advapi32", use_last_error=True)
+    if not secret:
+        advapi.CredDeleteW(target, 1, 0)
+        return
+    blob = secret.encode("utf-16-le")
+    cred = CREDENTIAL(Type=1, TargetName=target, CredentialBlobSize=len(blob), CredentialBlob=blob,
+                      Persist=2, UserName="WhisperScribe")  # 2 = CRED_PERSIST_LOCAL_MACHINE
+    if not advapi.CredWriteW(ctypes.byref(cred), 0):
+        raise OSError(ctypes.get_last_error(), "Windows Credential Manager refused to save the key")
+
+
+def load_api_key(target: str = CREDENTIAL_TARGET) -> str:
+    try:
+        if os.name == "nt":
+            key = _win_cred_read(target)
+            if not key:  # a key saved by an earlier version through the keyring package
+                try:
+                    import keyring
+                    key = keyring.get_password(KEYRING_SERVICE, KEYRING_USER) or ""
+                    if key:
+                        _win_cred_write(target, key)
+                except ImportError:
+                    pass
+            return key
         import keyring
         return keyring.get_password(KEYRING_SERVICE, KEYRING_USER) or ""
     except Exception:
-        log.warning("Could not read AnythingLLM key from the credential store", exc_info=True)
+        log.warning("Could not read the AnythingLLM key from the credential store", exc_info=True)
         return ""
 
 
-def save_api_key(key: str):
+def save_api_key(key: str, target: str = CREDENTIAL_TARGET):
+    """Raises if the key can't be stored, so the settings dialog can say so."""
+    if os.name == "nt":
+        _win_cred_write(target, key)
+        return
     import keyring
     if key:
         keyring.set_password(KEYRING_SERVICE, KEYRING_USER, key)

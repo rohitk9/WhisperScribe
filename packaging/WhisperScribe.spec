@@ -21,8 +21,6 @@ for pkg in ("nvidia.cublas", "nvidia.cudnn", "nvidia.cuda_runtime", "nvidia.cuda
 hiddenimports = collect_submodules("transformers.models.qwen2") + collect_submodules("transformers.models.qwen3")
 hiddenimports += collect_submodules("transformers.models.phi3") + collect_submodules("transformers.models.wavlm")
 hiddenimports += ["sklearn.cluster", "sklearn.metrics", "bitsandbytes"]
-hiddenimports += collect_submodules("keyring.backends")  # loaded dynamically; Windows Credential Manager backend
-
 a = Analysis(
     [os.path.join(ROOT, "local_transcriber_app.py")],
     pathex=[ROOT],

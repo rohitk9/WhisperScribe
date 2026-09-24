@@ -5,8 +5,8 @@ tkinterdnd2>=0.4          # drag & drop (optional — the app still works withou
 # Transcription
 faster-whisper>=1.2
 
-# AnythingLLM chat integration: stores the API key in Windows Credential Manager
-keyring>=24
+# AnythingLLM API key storage on macOS/Linux (Windows uses Credential Manager directly)
+keyring>=24; sys_platform != "win32"
 
 # Speaker labels + AI instructions (local models)
 numpy

@@ -168,6 +168,18 @@ def test_transcript_document_layout():
     assert doc.index("AI summary (Summarize):") < doc.index("Transcript:")
 
 
+@pytest.mark.skipif(os.name != "nt", reason="Windows Credential Manager")
+def test_api_key_roundtrip_in_credential_manager():
+    target = "WhisperScribe/unit-test-key"
+    try:
+        integrations.save_api_key("ABC-123 é", target)
+        assert integrations.load_api_key(target) == "ABC-123 é"
+        integrations.save_api_key("", target)  # empty key deletes it
+        assert integrations._win_cred_read(target) == ""
+    finally:
+        integrations._win_cred_write(target, "")
+
+
 # ---------- Ollama ----------
 def test_ollama_models_skips_embedders(server):
     server.routes[("GET", "/api/tags")] = {"models": [{"name": "qwen3.5:9b"}, {"name": "nomic-embed-text:latest"},

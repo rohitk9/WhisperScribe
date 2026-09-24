@@ -67,7 +67,8 @@ class AnythingLLMSettingsDialog(ctk.CTkToplevel):
         self.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(self, text="AnythingLLM connection", font=app.f_h2, text_color=TEXT).grid(
             row=0, column=0, pady=(18, 2), **pad)
-        ctk.CTkLabel(self, text="Everything stays on this computer. The key is kept in Windows Credential Manager.",
+        ctk.CTkLabel(self, text="Everything stays on this computer. The key is kept in Windows Credential Manager "
+                                "(under “WhisperScribe/anythingllm-api-key”).",
                      font=app.f_small, text_color=MUTED, wraplength=420, justify="left").grid(row=1, column=0, **pad)
 
         self.url = self._field(2, "Server address", app.settings.get("anythingllm_url", integrations.ANYTHINGLLM_URL))
@@ -110,7 +111,15 @@ class AnythingLLMSettingsDialog(ctk.CTkToplevel):
         threading.Thread(target=run, daemon=True).start()
 
     def _save(self):
-        integrations.save_api_key(self.key.get().strip())
+        key = self.key.get().strip()
+        try:
+            integrations.save_api_key(key)
+            if integrations.load_api_key() != key:
+                raise OSError("the key couldn't be read back after saving")
+        except Exception as exc:
+            log.exception("Saving the AnythingLLM key failed")
+            self.status.configure(text=f"✗ Couldn't save the key: {exc}"[:90], text_color=DANGER)
+            return
         self.app.settings["anythingllm_url"] = self.url.get().strip() or integrations.ANYTHINGLLM_URL
         self.app.settings["anythingllm_workspace"] = self.workspace.get().strip() or integrations.DEFAULT_WORKSPACE
         self.app._save_settings()
