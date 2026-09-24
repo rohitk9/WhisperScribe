@@ -1,4 +1,4 @@
-﻿# ðŸŽ™ WhisperScribe
+# 🎙 WhisperScribe
 
 **Private, on-device transcription for Windows.** Drop in a recording and get back a transcript (plus an optional AI summary). All processing happens on your machine, and nothing is uploaded.
 
@@ -53,7 +53,7 @@ python local_transcriber_app.py
 1. Drop a recording onto the window.
 2. Pick the language, model and output format in the sidebar.
 3. *(Optional)* choose an AI instruction chip or write your own.
-4. Press **Transcribe**. The result is saved next to the audio file by default; click **Changeâ€¦** to save it somewhere else.
+4. Press **Transcribe**. The result is saved next to the audio file by default; click **Change…** to save it somewhere else.
 
 | Shortcut | Action |
 | --- | --- |
